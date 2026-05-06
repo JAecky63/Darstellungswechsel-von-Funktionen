@@ -137,6 +137,7 @@
     <button onclick="setMode('equation')">Gleichung → Graph</button>
     <button onclick="setMode('equationTable')">Gleichung → Tabelle</button>
     <button onclick="endGame()">Spiel beenden</button>
+    <button onclick="startGame()">Neues Spiel starten</button>
   </div>
 
   <div class="container">
@@ -648,6 +649,22 @@
       endMessage.classList.remove('hidden');
 
       document.getElementById('feedback').textContent = 'Spiel beendet.';
+    }
+
+    function startGame() {
+      score = 0;
+      tasksSolved = 0;
+      level = 0;
+      levelProgress = 0;
+      gameActive = true;
+      answerLocked = false;
+      checkButton.disabled = false;
+
+      document.getElementById('endMessage').classList.add('hidden');
+      document.getElementById('feedback').textContent = '';
+
+      updateScore();
+      newTask();
     }
 
     function startDrag(event) {
