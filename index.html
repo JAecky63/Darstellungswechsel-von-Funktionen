@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lineare Funktionen Trainer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: linear-gradient(to bottom right, #dbeafe, #eff6ff);
+    }
+
+    .topbar {
+      text-align: center;
+      margin-bottom: 15px;
+      background: #ffffff;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .container.full-width-mode {
+      display: block;
+    }
+
+    .container.full-width-mode .left {
+      display: none;
+    }
+
+    .container.full-width-mode .right {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    .left, .right {
+      flex: 1;
+      min-width: 300px;
+      background: #ffffff;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+    }
+
+    canvas {
+      border: 2px solid #3b82f6;
+      max-width: 100%;
+      touch-action: none;
+      background: #ffffff;
+    }
+
+    input {
+      margin: 5px;
+      padding: 10px;
+      width: 90px;
+      font-size: 16px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      transition: background 0.2s ease;
+      padding: 10px 14px;
+      margin: 5px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    table {
+      margin: 10px auto;
+      border-collapse: collapse;
+      font-size: 18px;
+    }
+
+    td, th {
+      border: 1px solid black;
+      padding: 8px 16px;
+    }
+
+    .scorebox {
+      line-height: 1.6;
+      font-size: 20px;
+      font-weight: bold;
+      background: #eef5ff;
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+    }
+
+    #feedback {
+      font-size: 18px;
+      font-weight: bold;
+      min-height: 28px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Lineare Funktionen Trainer</h1>
+
+    <button onclick="setMode('graph')">Graph → Gleichung</button>
+    <button onclick="setMode('table')">Tabelle → Gleichung</button>
+    <button onclick="setMode('equation')">Gleichung → Graph</button>
+    <button onclick="setMode('equationTable')">Gleichung → Tabelle</button>
+    <button onclick="endGame()">Spiel beenden</button>
+  </div>
+
+  <div class="container">
+    <div class="left">
+      <canvas id="graph" width="320" height="320"></canvas>
+      <div id="tableContainer"></div>
+    </div>
+
+    <div class="right">
+      <div class="scorebox">
+        Punkte: <span id="score">0</span><br>
+        Bearbeitete Aufgaben: <span id="tasksSolved">0</span><br>
+        Level: <span id="levelDisplay">0</span> <span id="levelIcon">🌱</span><br>
+        Fortschritt zum nächsten Level: <span id="levelProgress">0</span>/3
+      </div>
+
+      <h2 id="task"></h2>
+      <p id="instruction"></p>
+
+      <div id="equationInputArea">
+        <p>Gib die Funktionsgleichung in der Form ein:</p>
+        <p><strong>y = m · x + b</strong></p>
+
+        <label>m:</label>
+        <input id="m" type="number" step="0.5" placeholder="Steigung">
+        <label>b:</label>
+        <input id="b" type="number" step="1" placeholder="Achsenabschnitt">
+      </div>
+
+      <div id="valueTableInputArea" class="hidden"></div>
+
+      <br>
+      <button id="checkButton" onclick="checkAnswer()">Überprüfen</button>
+      <button onclick="newTask()">Neue Aufgabe</button>
+
+      <p id="feedback"></p>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('graph');
+    const ctx = canvas.getContext('2d');
+    const tableContainer = document.getElementById('tableContainer');
+    const taskDiv = document.getElementById('task');
+    const instructionDiv = document.getElementById('instruction');
+    const scoreDisplay = document.getElementById('score');
+    const tasksSolvedDisplay = document.getElementById('tasksSolved');
+    const levelDisplay = document.getElementById('levelDisplay');
+    const levelProgressDisplay = document.getElementById('levelProgress');
+    const levelIcon = document.getElementById('levelIcon');
+    const checkButton = document.getElementById('checkButton');
+    const equationInputArea = document.getElementById('equationInputArea');
+    const valueTableInputArea = document.getElementById('valueTableInputArea');
+    const container = document.querySelector('.container');
+
+    const size = 320;
+    const scale = 20;
+    const snapStep = 0.5; // im Zeichenmodus können Punkte auch auf halbe Einheiten einrasten
+    const origin = size / 2;
+
+    let mode = 'graph';
+    let m = 1;
+    let b = 0;
+    let score = 0;
+    let tasksSolved = 0;
+    let gameActive = true;
+    let level = 0;
+    let levelProgress = 0;
+    let answerLocked = false;
+
+    let userPoints = [
+      { x: -2, y: -1 },
+      { x: 2, y: 1 }
+    ];
+    let draggingPointIndex = null;
+    let valueTableRows = [];
+
+    function randomSlope() {
+      let values;
+
+      if (level === 0) {
+        values = [-2, -1, 1, 2];
+      } else if (level === 1) {
+        values = [-2, -1, -0.5, 0.5, 1, 2];
+      } else {
+        values = [-2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2];
+      }
+
+      return values[Math.floor(Math.random() * values.length)];
+    }
+
+    function randomIntercept() {
+      if (level === 0) {
+        return Math.floor(Math.random() * 5) - 2;
+      }
+
+      return Math.floor(Math.random() * 7) - 3;
+    }
+
+    function formatEquation(mValue, bValue) {
+      if (bValue > 0) return `y = ${mValue}x + ${bValue}`;
+      if (bValue < 0) return `y = ${mValue}x - ${Math.abs(bValue)}`;
+      return `y = ${mValue}x`;
+    }
+
+    function updateScore() {
+      scoreDisplay.textContent = score;
+      tasksSolvedDisplay.textContent = tasksSolved;
+      levelDisplay.textContent = level;
+      levelProgressDisplay.textContent = levelProgress;
+
+      const icons = ['🌱', '⭐', '🚀', '👑'];
+      levelIcon.textContent = icons[level];
+    }
+
+    function registerCorrectAnswer() {
+      score = score + 1;
+      levelProgress = levelProgress + 1;
+
+      if (levelProgress >= 3 && level < 3) {
+        level = level + 1;
+        levelProgress = 0;
+
+        document.getElementById('feedback').textContent += ` Levelaufstieg! Du bist jetzt in Level ${level}.`;
+      }
+    }
+
+    function setMode(newMode) {
+      if (!gameActive) return;
+      mode = newMode;
+      newTask();
+    }
+
+    function mathToPixel(point) {
+      return {
+        px: origin + point.x * scale,
+        py: origin - point.y * scale
+      };
+    }
+
+    function pixelToMath(px, py) {
+      return {
+        x: Math.round(((px - origin) / scale) / snapStep) * snapStep,
+        y: Math.round(((origin - py) / scale) / snapStep) * snapStep
+      };
+    }
+
+    function getCanvasPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+      const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+      return {
+        x: (clientX - rect.left) * (canvas.width / rect.width),
+        y: (clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function drawGrid() {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ddd';
+      for (let x = 0; x <= size; x += scale) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, size);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= size; y += scale) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(size, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawAxes() {
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(origin, 0);
+      ctx.lineTo(origin, size);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, origin);
+      ctx.lineTo(size, origin);
+      ctx.stroke();
+    }
+
+    function drawLabels() {
+      ctx.fillStyle = 'black';
+      ctx.font = '10px Arial';
+      for (let i = -7; i <= 7; i++) {
+        if (i === 0) continue;
+        ctx.fillText(i, origin + i * scale - 5, origin + 12);
+        ctx.fillText(i, origin + 5, origin - i * scale + 3);
+      }
+    }
+
+    function drawTargetLine() {
+      ctx.strokeStyle = 'blue';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = -10; x <= 10; x += 0.5) {
+        const y = m * x + b;
+        const px = origin + x * scale;
+        const py = origin - y * scale;
+        if (x === -10) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    function drawUserLine() {
+      const p1 = userPoints[0];
+      const p2 = userPoints[1];
+
+      if (p1.x === p2.x) return;
+
+      const userM = (p2.y - p1.y) / (p2.x - p1.x);
+      const userB = p1.y - userM * p1.x;
+
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = -10; x <= 10; x += 0.5) {
+        const y = userM * x + userB;
+        const px = origin + x * scale;
+        const py = origin - y * scale;
+        if (x === -10) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      userPoints.forEach((point) => {
+        const pixel = mathToPixel(point);
+        ctx.beginPath();
+        ctx.fillStyle = 'white';
+        ctx.arc(pixel.px, pixel.py, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      });
+    }
+
+    function drawGraph() {
+      ctx.clearRect(0, 0, size, size);
+      drawGrid();
+      drawAxes();
+      drawLabels();
+
+      if (mode === 'equation') {
+        drawUserLine();
+      } else {
+        drawTargetLine();
+      }
+    }
+
+    function createTable() {
+      let html = '<table><tr><th>x</th><th>y</th></tr>';
+
+      let xValues;
+      if (level < 3) {
+        xValues = [-2, -1, 0, 1, 2];
+      } else {
+        xValues = [-3, -2, -1, 1, 2];
+      }
+
+      for (const x of xValues) {
+        const y = m * x + b;
+        html += `<tr><td>${x}</td><td>${y}</td></tr>`;
+      }
+      html += '</table>';
+      tableContainer.innerHTML = html;
+    }
+
+    function createEquationToTableTask() {
+      const xValues = level < 3
+        ? [-2, -1, 0, 1, 2]
+        : [-3, -2, -1, 1, 2];
+      valueTableRows = [];
+
+      let html = '<table><tr><th>x</th><th>y</th></tr>';
+
+      xValues.forEach((x, index) => {
+        const y = m * x + b;
+
+        if (index % 2 === 0) {
+          valueTableRows.push({ type: 'y', x: x, y: y, inputId: `tableInput${index}` });
+          html += `<tr><td>${x}</td><td><input id="tableInput${index}" type="number" step="0.5" placeholder="y"></td></tr>`;
+        } else {
+          valueTableRows.push({ type: 'x', x: x, y: y, inputId: `tableInput${index}` });
+          html += `<tr><td><input id="tableInput${index}" type="number" step="0.5" placeholder="x"></td><td>${y}</td></tr>`;
+        }
+      });
+
+      html += '</table>';
+      valueTableInputArea.innerHTML = html;
+    }
+
+    function resetUserLine() {
+      userPoints = [
+        { x: -2, y: -1 },
+        { x: 2, y: 1 }
+      ];
+      draggingPointIndex = null;
+    }
+
+    function checkEquationInputAnswer() {
+      const userM = parseFloat(document.getElementById('m').value);
+      const userB = parseFloat(document.getElementById('b').value);
+
+      if (Number.isNaN(userM) || Number.isNaN(userB)) {
+        document.getElementById('feedback').textContent = 'Bitte gib für m und b eine Zahl ein.';
+        return false;
+      }
+
+      const tol = 0.001;
+      const correctM = Math.abs(userM - m) < tol;
+      const correctB = Math.abs(userB - b) < tol;
+
+      tasksSolved = tasksSolved + 1;
+
+      if (correctM && correctB) {
+        registerCorrectAnswer();
+        document.getElementById('feedback').textContent = `Richtig! Du hast jetzt ${score} Punkt(e).`;
+      } else if (correctM && !correctB) {
+        document.getElementById('feedback').textContent = `m stimmt, aber b ist falsch. Richtige Lösung: ${formatEquation(m, b)}`;
+      } else if (!correctM && correctB) {
+        document.getElementById('feedback').textContent = `b stimmt, aber m ist falsch. Richtige Lösung: ${formatEquation(m, b)}`;
+      } else {
+        document.getElementById('feedback').textContent = `Falsch. Richtige Lösung: ${formatEquation(m, b)}`;
+      }
+
+      return true;
+    }
+
+    function checkGraphDrawingAnswer() {
+      const p1 = userPoints[0];
+      const p2 = userPoints[1];
+
+      if (p1.x === p2.x) {
+        document.getElementById('feedback').textContent = 'Die beiden Punkte dürfen nicht senkrecht übereinander liegen.';
+        return false;
+      }
+
+      const userM = (p2.y - p1.y) / (p2.x - p1.x);
+      const userB = p1.y - userM * p1.x;
+      const tol = 0.001;
+      const correctM = Math.abs(userM - m) < tol;
+      const correctB = Math.abs(userB - b) < tol;
+
+      tasksSolved = tasksSolved + 1;
+
+      if (correctM && correctB) {
+        registerCorrectAnswer();
+        document.getElementById('feedback').textContent = `Richtig! Deine Gerade passt zu ${formatEquation(m, b)}. Du hast jetzt ${score} Punkt(e).`;
+      } else {
+        document.getElementById('feedback').textContent = `Nicht ganz. Deine Gerade hat etwa ${formatEquation(Number(userM.toFixed(2)), Number(userB.toFixed(2)))}. Gesucht war ${formatEquation(m, b)}.`;
+      }
+
+      return true;
+    }
+
+    function checkEquationToTableAnswer() {
+      const tol = 0.001;
+      let allCorrect = true;
+      let emptyField = false;
+
+      valueTableRows.forEach((row) => {
+        const input = document.getElementById(row.inputId);
+        const userValue = parseFloat(input.value);
+
+        if (Number.isNaN(userValue)) {
+          emptyField = true;
+          allCorrect = false;
+          return;
+        }
+
+        const correctValue = row.type === 'x' ? row.x : row.y;
+        if (Math.abs(userValue - correctValue) >= tol) {
+          allCorrect = false;
+        }
+      });
+
+      if (emptyField) {
+        document.getElementById('feedback').textContent = 'Bitte fülle alle fehlenden Tabellenwerte aus.';
+        return false;
+      }
+
+      tasksSolved = tasksSolved + 1;
+
+      if (allCorrect) {
+        registerCorrectAnswer();
+        document.getElementById('feedback').textContent = `Richtig! Die Tabelle passt zu ${formatEquation(m, b)}. Du hast jetzt ${score} Punkt(e).`;
+      } else {
+        const solutions = valueTableRows.map((row) => {
+          const value = row.type === 'x' ? row.x : row.y;
+          return `${row.type} = ${value}`;
+        }).join(', ');
+        document.getElementById('feedback').textContent = `Nicht ganz. Richtige fehlende Werte: ${solutions}`;
+      }
+
+      return true;
+    }
+
+    function checkAnswer() {
+      if (!gameActive || answerLocked) return;
+
+      let checked;
+      if (mode === 'equation') {
+        checked = checkGraphDrawingAnswer();
+      } else if (mode === 'equationTable') {
+        checked = checkEquationToTableAnswer();
+      } else {
+        checked = checkEquationInputAnswer();
+      }
+      if (!checked) return;
+
+      updateScore();
+      answerLocked = true;
+      checkButton.disabled = true;
+    }
+
+    function newTask() {
+      if (!gameActive) return;
+
+      m = randomSlope();
+      b = randomIntercept();
+      answerLocked = false;
+      checkButton.disabled = false;
+      resetUserLine();
+
+      document.getElementById('m').value = '';
+      document.getElementById('b').value = '';
+      document.getElementById('feedback').textContent = '';
+      valueTableInputArea.innerHTML = '';
+
+      container.classList.toggle('full-width-mode', mode === 'equationTable');
+
+      if (mode === 'graph') {
+        canvas.style.display = 'block';
+        tableContainer.innerHTML = '';
+        equationInputArea.classList.remove('hidden');
+        valueTableInputArea.classList.add('hidden');
+        taskDiv.textContent = 'Bestimme die Gleichung zur Geraden.';
+        instructionDiv.textContent = 'Lies Steigung m und Achsenabschnitt b aus dem Graphen ab.';
+        drawGraph();
+      } else if (mode === 'table') {
+        canvas.style.display = 'none';
+        tableContainer.innerHTML = '';
+        equationInputArea.classList.remove('hidden');
+        valueTableInputArea.classList.add('hidden');
+        taskDiv.textContent = 'Bestimme die Gleichung zur Wertetabelle.';
+        instructionDiv.textContent = 'Berechne aus den Tabellenwerten die Steigung m und den Achsenabschnitt b.';
+        createTable();
+      } else if (mode === 'equation') {
+        canvas.style.display = 'block';
+        tableContainer.innerHTML = '';
+        equationInputArea.classList.add('hidden');
+        valueTableInputArea.classList.add('hidden');
+        taskDiv.textContent = `Zeichne den Graphen zu: ${formatEquation(m, b)}`;
+        instructionDiv.textContent = 'Ziehe die beiden roten Punkte. Sie rasten auch auf halbe Einheiten ein, damit Steigungen wie 1,5 leichter möglich sind.';
+        drawGraph();
+      } else if (mode === 'equationTable') {
+        canvas.style.display = 'none';
+        tableContainer.innerHTML = '';
+        equationInputArea.classList.add('hidden');
+        valueTableInputArea.classList.remove('hidden');
+        taskDiv.textContent = `Ergänze die Wertetabelle zu: ${formatEquation(m, b)}`;
+        instructionDiv.textContent = 'In jeder Zeile ist abwechselnd ein x-Wert oder ein y-Wert vorgegeben. Berechne den fehlenden Wert.';
+        createEquationToTableTask();
+      }
+    }
+
+    function endGame() {
+      gameActive = false;
+      answerLocked = true;
+      checkButton.disabled = true;
+      document.getElementById('feedback').textContent = `Spiel beendet! Du hast ${score} Punkt(e) bei ${tasksSolved} bearbeiteten Aufgabe(n) erreicht.`;
+    }
+
+    function startDrag(event) {
+      if (mode !== 'equation' || answerLocked || !gameActive) return;
+      event.preventDefault();
+
+      const pos = getCanvasPosition(event);
+      draggingPointIndex = null;
+
+      userPoints.forEach((point, index) => {
+        const pixel = mathToPixel(point);
+        const distance = Math.hypot(pos.x - pixel.px, pos.y - pixel.py);
+        if (distance < 18) draggingPointIndex = index;
+      });
+    }
+
+    function moveDrag(event) {
+      if (draggingPointIndex === null || mode !== 'equation' || answerLocked || !gameActive) return;
+      event.preventDefault();
+
+      const pos = getCanvasPosition(event);
+      const mathPoint = pixelToMath(pos.x, pos.y);
+
+      mathPoint.x = Math.max(-7, Math.min(7, mathPoint.x));
+      mathPoint.y = Math.max(-7, Math.min(7, mathPoint.y));
+
+      userPoints[draggingPointIndex] = mathPoint;
+      drawGraph();
+    }
+
+    function endDrag() {
+      draggingPointIndex = null;
+    }
+
+    canvas.addEventListener('mousedown', startDrag);
+    canvas.addEventListener('mousemove', moveDrag);
+    canvas.addEventListener('mouseup', endDrag);
+    canvas.addEventListener('mouseleave', endDrag);
+
+    canvas.addEventListener('touchstart', startDrag);
+    canvas.addEventListener('touchmove', moveDrag);
+    canvas.addEventListener('touchend', endDrag);
+
+    updateScore();
+    newTask();
+  </script>
+</body>
+</html>
