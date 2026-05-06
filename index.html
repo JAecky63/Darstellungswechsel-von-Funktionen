@@ -106,6 +106,23 @@
       min-height: 28px;
     }
 
+    #endMessage {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      width: min(90%, 720px);
+      background: #1d4ed8;
+      color: white;
+      padding: 18px 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(30, 64, 175, 0.35);
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+      z-index: 10;
+    }
+
     .hidden {
       display: none;
     }
@@ -158,6 +175,8 @@
       <p id="feedback"></p>
     </div>
   </div>
+
+  <div id="endMessage" class="hidden"></div>
 
   <script>
     const canvas = document.getElementById('graph');
@@ -242,9 +261,27 @@
       if (levelProgress >= 3 && level < 3) {
         level = level + 1;
         levelProgress = 0;
-
-        document.getElementById('feedback').textContent += ` Levelaufstieg! Du bist jetzt in Level ${level}.`;
+        return ` Levelaufstieg! Du bist jetzt in Level ${level}.`;
       }
+
+      return '';
+    }
+
+    function registerWrongAnswer() {
+      score = Math.max(0, score - 1);
+      levelProgress = levelProgress - 1;
+
+      if (levelProgress < 0) {
+        if (level > 0) {
+          level = level - 1;
+          levelProgress = 2;
+          return ` Punkt abgezogen. Levelabstieg! Du bist jetzt wieder in Level ${level}.`;
+        }
+
+        levelProgress = 0;
+      }
+
+      return ' Punkt abgezogen.';
     }
 
     function setMode(newMode) {
@@ -443,14 +480,17 @@
       tasksSolved = tasksSolved + 1;
 
       if (correctM && correctB) {
-        registerCorrectAnswer();
-        document.getElementById('feedback').textContent = `Richtig! Du hast jetzt ${score} Punkt(e).`;
+        const levelMessage = registerCorrectAnswer();
+        document.getElementById('feedback').textContent = `Richtig! Du hast jetzt ${score} Punkt(e).${levelMessage}`;
       } else if (correctM && !correctB) {
-        document.getElementById('feedback').textContent = `m stimmt, aber b ist falsch. Richtige Lösung: ${formatEquation(m, b)}`;
+        const levelMessage = registerWrongAnswer();
+        document.getElementById('feedback').textContent = `m stimmt, aber b ist falsch. Richtige Lösung: ${formatEquation(m, b)}.${levelMessage}`;
       } else if (!correctM && correctB) {
-        document.getElementById('feedback').textContent = `b stimmt, aber m ist falsch. Richtige Lösung: ${formatEquation(m, b)}`;
+        const levelMessage = registerWrongAnswer();
+        document.getElementById('feedback').textContent = `b stimmt, aber m ist falsch. Richtige Lösung: ${formatEquation(m, b)}.${levelMessage}`;
       } else {
-        document.getElementById('feedback').textContent = `Falsch. Richtige Lösung: ${formatEquation(m, b)}`;
+        const levelMessage = registerWrongAnswer();
+        document.getElementById('feedback').textContent = `Falsch. Richtige Lösung: ${formatEquation(m, b)}.${levelMessage}`;
       }
 
       return true;
@@ -474,10 +514,11 @@
       tasksSolved = tasksSolved + 1;
 
       if (correctM && correctB) {
-        registerCorrectAnswer();
-        document.getElementById('feedback').textContent = `Richtig! Deine Gerade passt zu ${formatEquation(m, b)}. Du hast jetzt ${score} Punkt(e).`;
+        const levelMessage = registerCorrectAnswer();
+        document.getElementById('feedback').textContent = `Richtig! Deine Gerade passt zu ${formatEquation(m, b)}. Du hast jetzt ${score} Punkt(e).${levelMessage}`;
       } else {
-        document.getElementById('feedback').textContent = `Nicht ganz. Deine Gerade hat etwa ${formatEquation(Number(userM.toFixed(2)), Number(userB.toFixed(2)))}. Gesucht war ${formatEquation(m, b)}.`;
+        const levelMessage = registerWrongAnswer();
+        document.getElementById('feedback').textContent = `Nicht ganz. Deine Gerade hat etwa ${formatEquation(Number(userM.toFixed(2)), Number(userB.toFixed(2)))}. Gesucht war ${formatEquation(m, b)}.${levelMessage}`;
       }
 
       return true;
@@ -512,14 +553,15 @@
       tasksSolved = tasksSolved + 1;
 
       if (allCorrect) {
-        registerCorrectAnswer();
-        document.getElementById('feedback').textContent = `Richtig! Die Tabelle passt zu ${formatEquation(m, b)}. Du hast jetzt ${score} Punkt(e).`;
+        const levelMessage = registerCorrectAnswer();
+        document.getElementById('feedback').textContent = `Richtig! Die Tabelle passt zu ${formatEquation(m, b)}. Du hast jetzt ${score} Punkt(e).${levelMessage}`;
       } else {
         const solutions = valueTableRows.map((row) => {
           const value = row.type === 'x' ? row.x : row.y;
           return `${row.type} = ${value}`;
         }).join(', ');
-        document.getElementById('feedback').textContent = `Nicht ganz. Richtige fehlende Werte: ${solutions}`;
+        const levelMessage = registerWrongAnswer();
+        document.getElementById('feedback').textContent = `Nicht ganz. Richtige fehlende Werte: ${solutions}.${levelMessage}`;
       }
 
       return true;
@@ -555,6 +597,7 @@
       document.getElementById('m').value = '';
       document.getElementById('b').value = '';
       document.getElementById('feedback').textContent = '';
+      document.getElementById('endMessage').classList.add('hidden');
       valueTableInputArea.innerHTML = '';
 
       container.classList.toggle('full-width-mode', mode === 'equationTable');
@@ -598,7 +641,13 @@
       gameActive = false;
       answerLocked = true;
       checkButton.disabled = true;
-      document.getElementById('feedback').textContent = `Spiel beendet! Du hast ${score} Punkt(e) bei ${tasksSolved} bearbeiteten Aufgabe(n) erreicht.`;
+      updateScore();
+
+      const endMessage = document.getElementById('endMessage');
+      endMessage.textContent = `Du hast das Spiel bei Level ${level} mit der Punktzahl ${score} beendet.`;
+      endMessage.classList.remove('hidden');
+
+      document.getElementById('feedback').textContent = 'Spiel beendet.';
     }
 
     function startDrag(event) {
